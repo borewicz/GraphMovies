@@ -46,7 +46,7 @@ class MovieItem {
 public class MainActivity extends AppCompatActivity {
 
     private List<MovieItem> moviesList;
-    private boolean flag_loading = false;
+    private boolean flag_loading = false, searchMode = false;
     private ArrayAdapter<MovieItem> adapter;
 
     @Override
@@ -81,15 +81,14 @@ public class MainActivity extends AppCompatActivity {
                                  int visibleItemCount, int totalItemCount) {
 
                 if (firstVisibleItem + visibleItemCount == totalItemCount && totalItemCount != 0) {
-                    if (flag_loading == false) {
+                    if (flag_loading == false && searchMode == false) {
                         flag_loading = true;
-                        new LoadMovies(moviesList.size(), 10).execute();
+                        new LoadMovies(createQuery(moviesList.size(), 10)).execute();
                     }
                 }
             }
         });
-
-        new LoadMovies(0, 10).execute();
+        new LoadMovies(createQuery(0, 10)).execute();
     }
 
     @Override
@@ -101,7 +100,11 @@ public class MainActivity extends AppCompatActivity {
         searchViewAndroidActionBar.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
             @Override
             public boolean onQueryTextSubmit(String query) {
+                searchMode = true;
                 searchViewAndroidActionBar.clearFocus();
+                moviesList.clear();
+                adapter.notifyDataSetChanged();
+                new LoadMovies(String.format("MATCH (m:Movie) WHERE m.title CONTAINS '%s' return m.title,m.genre ORDER BY m.title", query)).execute();
                 return true;
             }
 
@@ -110,15 +113,34 @@ public class MainActivity extends AppCompatActivity {
                 return false;
             }
         });
+        searchViewAndroidActionBar.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+
+            @Override
+            public void onViewDetachedFromWindow(View arg0) {
+                searchMode = false;
+                moviesList.clear();
+                new LoadMovies(createQuery(0, 10)).execute();
+            }
+
+            @Override
+            public void onViewAttachedToWindow(View arg0) {
+                // search was opened
+            }
+        });
         return super.onCreateOptionsMenu(menu);
     }
 
-    class LoadMovies extends AsyncTask<String, String, String> {
-        int mSkip, mLimit;
+    private String createQuery(int skip, int limit) {
+        return String.format(Locale.US,
+                "MATCH (m:Movie) RETURN m.title,m.genre ORDER BY m.title SKIP %d LIMIT %d", skip, limit);
+    }
 
-        LoadMovies(int skip, int limit) {
-            mSkip = skip;
-            mLimit = limit;
+    class LoadMovies extends AsyncTask<String, String, String> {
+        //int mSkip, mLimit;
+        String mQuery;
+
+        LoadMovies(String query) {
+            mQuery = query;
         }
 
         @Override
@@ -126,15 +148,11 @@ public class MainActivity extends AppCompatActivity {
             super.onPreExecute();
         }
 
-        private String createQuery(int limit, int skip) {
-            return String.format(Locale.US,
-                    "MATCH (m:Movie) RETURN m.title,m.genre ORDER BY m.title SKIP %d LIMIT %d", skip, limit);
-        }
-
         protected String doInBackground(String... args) {
             Session session = Neo4jDriver.getInstance().getDriver().session();
 
-            StatementResult result = session.run(createQuery(mLimit, mSkip));
+            //createQuery(mLimit, mSkip)
+            StatementResult result = session.run(mQuery);
 
             while (result.hasNext()) {
                 Record record = result.next();

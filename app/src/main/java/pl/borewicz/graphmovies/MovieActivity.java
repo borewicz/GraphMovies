@@ -5,6 +5,8 @@ import android.os.Bundle;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.DefaultItemAnimator;
+import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.Toolbar;
 import android.view.LayoutInflater;
@@ -16,12 +18,18 @@ import android.widget.ListAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
 
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.neo4j.driver.v1.Record;
 import org.neo4j.driver.v1.Session;
 import org.neo4j.driver.v1.StatementResult;
+import org.neo4j.driver.v1.types.Node;
+import org.neo4j.driver.v1.StatementResult;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,8 +38,10 @@ public class MovieActivity extends AppCompatActivity {
 
     //private Map<String, String> movieInfo;
     private List<String[]> movieInfo;
-    String imageUrl, trailer;
+    String imageUrl, trailer, title;
     ArrayAdapter<String[]> adapter;
+    RecyclerView recyclerView;
+    Toolbar toolbar;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -39,34 +49,12 @@ public class MovieActivity extends AppCompatActivity {
         movieInfo = new ArrayList<String[]>();
 
         setContentView(R.layout.activity_movie);
-        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        adapter = new ArrayAdapter<String[]>(this, android.R.layout.simple_list_item_2, android.R.id.text1, movieInfo) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                View view = super.getView(position, convertView, parent);
-
-                TextView text1 = (TextView) view.findViewById(android.R.id.text1);
-                TextView text2 = (TextView) view.findViewById(android.R.id.text2);
-
-                String[] entry = movieInfo.get(position);
-                text1.setText(entry[0]);
-                text2.setText(entry[1]);
-                return view;
-            }
-        };
-        ListView listView = (ListView) findViewById(R.id.att_list);
-        listView.setOnTouchListener(new View.OnTouchListener() {
-            // Setting on Touch Listener for handling the touch inside ScrollView
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                // Disallow the touch request for parent scroll on touch of child view
-                v.getParent().requestDisallowInterceptTouchEvent(true);
-                return false;
-            }
-        });
-        listView.setAdapter(adapter);
+        recyclerView = (RecyclerView) findViewById(R.id.att_list);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        recyclerView.setItemAnimator(new DefaultItemAnimator());
 
         String query = String.format(Locale.US, "MATCH (m:Movie) WHERE id(m)=%d return m", getIntent().getIntExtra("movie_id", 0));
         new LoadMovie(query).execute();
@@ -81,25 +69,45 @@ public class MovieActivity extends AppCompatActivity {
         });
     }
 
-    public static void setListViewHeightBasedOnChildren(ListView listView) {
-        ListAdapter listAdapter = listView.getAdapter();
-        if (listAdapter == null)
-            return;
+    public class MovieAdapter extends RecyclerView.Adapter {
+        private RecyclerView mRecyclerView;
+        private List<String[]> mDataset;
 
-        int desiredWidth = View.MeasureSpec.makeMeasureSpec(listView.getWidth(), View.MeasureSpec.UNSPECIFIED);
-        int totalHeight = 0;
-        View view = null;
-        for (int i = 0; i < listAdapter.getCount(); i++) {
-            view = listAdapter.getView(i, view, listView);
-            if (i == 0)
-                view.setLayoutParams(new ViewGroup.LayoutParams(desiredWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
+        private class MyViewHolder extends RecyclerView.ViewHolder {
+            public TextView mTitle;
+            public TextView mContent;
 
-            view.measure(desiredWidth, View.MeasureSpec.UNSPECIFIED);
-            totalHeight += view.getMeasuredHeight();
+            public MyViewHolder(View pItem) {
+                super(pItem);
+                mTitle = (TextView) pItem.findViewById(R.id.article_title);
+                mContent = (TextView) pItem.findViewById(R.id.article_subtitle);
+            }
         }
-        ViewGroup.LayoutParams params = listView.getLayoutParams();
-        params.height = totalHeight + (listView.getDividerHeight() * (listAdapter.getCount() - 1));
-        listView.setLayoutParams(params);
+
+        public MovieAdapter(List<String[]> pDataset, RecyclerView pRecyclerView) {
+            mDataset = pDataset;
+            mRecyclerView = pRecyclerView;
+        }
+
+        @Override
+        public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup viewGroup, final int i) {
+            View view = LayoutInflater.from(viewGroup.getContext())
+                    .inflate(R.layout.movie_card, viewGroup, false);
+
+            return new MyViewHolder(view);
+        }
+
+        @Override
+        public void onBindViewHolder(RecyclerView.ViewHolder viewHolder, final int i) {
+            String[] entry = mDataset.get(i);
+            ((MyViewHolder) viewHolder).mTitle.setText(entry[0]);
+            ((MyViewHolder) viewHolder).mContent.setText(entry[1]);
+        }
+
+        @Override
+        public int getItemCount() {
+            return mDataset.size();
+        }
     }
 
     class LoadMovie extends AsyncTask<String, String, String> {
@@ -121,16 +129,21 @@ public class MovieActivity extends AppCompatActivity {
 
             while (result.hasNext()) {
                 Record record = result.next();
-                //List<Object> stuff = record.get("m").asList();
-                movieInfo.add(new String[] { "Title", record.get("title").asString() });
-                movieInfo.add(new String[] { "Tagline", record.get("m.tagline").asString() });
-                movieInfo.add(new String[] { "Studio", record.get("m.studio").asString() });
-                movieInfo.add(new String[] { "Description", record.get("m.description").asString() });
-                movieInfo.add(new String[] { "Language", record.get("m.language").asString() });
-                movieInfo.add(new String[] { "Genre", record.get("m.genre").asString() });
 
-                trailer =  record.get("m.genre").asString();
-                imageUrl = record.get("m.imageUrl").asString();
+                //Map<String, Object> mapa = record.asMap();
+                Node node = record.get("m").asNode();
+                //movieInfo.add(new String[] { "Title", node.get("title").asString()});
+                if (!node.get("tagline").asString().isEmpty())
+                    movieInfo.add(new String[]{"Tagline", node.get("tagline").asString()});
+                if (!node.get("studio").asString().isEmpty())
+                    movieInfo.add(new String[]{"Studio", node.get("studio").asString()});
+                movieInfo.add(new String[]{"Description", node.get("description").asString()});
+                movieInfo.add(new String[]{"Language", node.get("language").asString()});
+                movieInfo.add(new String[]{"Genre", node.get("genre").asString()});
+
+                trailer = node.get("trailer").asString();
+                imageUrl = node.get("imageUrl").asString();
+                title = node.get("title").asString();
             }
 
             session.close();
@@ -141,8 +154,8 @@ public class MovieActivity extends AppCompatActivity {
             //pDialog.dismiss();
             runOnUiThread(new Runnable() {
                 public void run() {
-                    adapter.notifyDataSetChanged();
-                    setListViewHeightBasedOnChildren((ListView) findViewById(R.id.att_list));
+                    recyclerView.setAdapter(new MovieAdapter(movieInfo, recyclerView));
+                    toolbar.setTitle(title);
                 }
             });
         }

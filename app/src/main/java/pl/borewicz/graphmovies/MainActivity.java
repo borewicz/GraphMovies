@@ -1,5 +1,6 @@
 package pl.borewicz.graphmovies;
 
+import android.content.Intent;
 import android.graphics.Movie;
 import android.os.AsyncTask;
 import android.support.v4.view.MenuItemCompat;
@@ -12,6 +13,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AbsListView;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -25,6 +27,7 @@ import org.neo4j.driver.v1.*;
 class MovieItem {
     private String name;
     private String genre;
+    private int id;
 
     public String getName() {
         return name;
@@ -40,6 +43,14 @@ class MovieItem {
 
     public void setGenre(String genre) {
         this.genre = genre;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
     }
 }
 
@@ -88,6 +99,17 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+        listView.setClickable(true);
+        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+
+            @Override
+            public void onItemClick(AdapterView<?> arg0, View arg1, int position, long arg3) {
+                MovieItem movie = (MovieItem) arg0.getItemAtPosition(position);
+                Intent intent = new Intent(MainActivity.this, MovieActivity.class);
+                intent.putExtra("movie_id", movie.getId());
+                startActivity(intent);
+            }
+        });
         new LoadMovies(createQuery(0, 10)).execute();
     }
 
@@ -104,7 +126,7 @@ public class MainActivity extends AppCompatActivity {
                 searchViewAndroidActionBar.clearFocus();
                 moviesList.clear();
                 adapter.notifyDataSetChanged();
-                new LoadMovies(String.format("MATCH (m:Movie) WHERE m.title CONTAINS '%s' return m.title,m.genre ORDER BY m.title", query)).execute();
+                new LoadMovies(String.format("MATCH (m:Movie) WHERE m.title CONTAINS '%s' return m.title,m.genre,id(m) as movie_id ORDER BY m.title", query)).execute();
                 return true;
             }
 
@@ -132,7 +154,7 @@ public class MainActivity extends AppCompatActivity {
 
     private String createQuery(int skip, int limit) {
         return String.format(Locale.US,
-                "MATCH (m:Movie) RETURN m.title,m.genre ORDER BY m.title SKIP %d LIMIT %d", skip, limit);
+                "MATCH (m:Movie) RETURN m.title,m.genre,id(m) as movie_id ORDER BY m.title SKIP %d LIMIT %d", skip, limit);
     }
 
     class LoadMovies extends AsyncTask<String, String, String> {
@@ -160,6 +182,7 @@ public class MainActivity extends AppCompatActivity {
                 MovieItem item = new MovieItem();
                 item.setName(record.get("m.title").asString());
                 item.setGenre(record.get("m.genre").asString());
+                item.setId(record.get("movie_id").asInt());
                 moviesList.add(item);
             }
 

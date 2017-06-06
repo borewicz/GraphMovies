@@ -34,7 +34,7 @@
                     android:inputType="textUri"
                     android:maxLines="1"
                     android:singleLine="true"
-                    android:text="bolt://10.0.2.2:7687" />
+                    android:text="http://10.0.2.2:7474" />
 
             </android.support.design.widget.TextInputLayout>
 

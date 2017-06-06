@@ -1,41 +1,87 @@
 package pl.borewicz.graphmovies;
 
-import org.neo4j.driver.v1.AuthTokens;
-import org.neo4j.driver.v1.Driver;
-import org.neo4j.driver.v1.GraphDatabase;
+import android.util.Base64;
 
-/**
- * Created by Piotr on 2017-05-31.
- */
+import java.io.BufferedReader;
+import java.io.DataOutputStream;
+import java.io.InputStreamReader;
+import java.io.StringReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
-public final class Neo4jDriver {
-    private static volatile Neo4jDriver instance = null;
-    private Driver driver;
+import javax.json.*;
 
-    public static Neo4jDriver getInstance() {
-        if (instance == null) {
-            synchronized (Neo4jDriver.class) {
-                if (instance == null) {
-                    instance = new Neo4jDriver();
-                }
-            }
+public class Neo4jDriver {
+    private static String mAuthData, mServerAddress;
+
+    private static boolean checkAuth(String serverAddress, String username, String password)
+    {
+        String url = serverAddress + "/user/" + username;
+        try {
+            URL obj = new URL(url);
+            HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+
+            //add reuqest header
+            con.setRequestMethod("GET");
+            con.setRequestProperty("Accept", "application/json; charset=UTF-8");
+            con.setRequestProperty("Content-Type", "application/json");
+            con.setRequestProperty("Authorization", "Basic "
+                    + Base64.encodeToString((username + ":" + password).getBytes(), Base64.DEFAULT));
+
+            return con.getResponseCode() == 200;
         }
-        return instance;
-    }
-    private Neo4jDriver() {
-    }
-
-    public void InitializeConnection(String serverAddress, String username, String password)
-    {
-        //bolt://localhost:7687
-        //neo4j
-        //neo4j
-        driver = GraphDatabase.driver(serverAddress, AuthTokens.basic(username, password));
+        catch (Exception e) {
+            return false;
+        }
     }
 
-    public Driver getDriver()
+    public static boolean InitializeConnection(String serverAddress, String username, String password)
     {
-        return driver;
+        if (checkAuth(serverAddress, username, password))
+        {
+            mServerAddress = serverAddress;
+            mAuthData = Base64.encodeToString((username + ":" + password).getBytes(), Base64.DEFAULT);
+            return true;
+        }
+        else
+            return false;
+    }
+
+    public static JsonObject sendPost(String query) throws Exception {
+
+        String url = mServerAddress + "/db/data/cypher";
+        URL obj = new URL(url);
+        HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+
+        con.setRequestMethod("POST");
+        con.setRequestProperty("Accept", "application/json; charset=UTF-8");
+        con.setRequestProperty("Content-Type", "application/json" );
+        con.setRequestProperty("Authorization", "Basic " + mAuthData);
+
+        String urlParameters = Json.createObjectBuilder()
+                .add("query", query)
+                .add("params", Json.createObjectBuilder().build())
+                .build()
+                .toString();
+
+        con.setDoOutput(true);
+        DataOutputStream wr = new DataOutputStream(con.getOutputStream());
+        wr.writeBytes(urlParameters);
+        wr.flush();
+        wr.close();
+
+        BufferedReader in = new BufferedReader(
+                new InputStreamReader(con.getInputStream()));
+        String inputLine;
+        StringBuffer response = new StringBuffer();
+
+        while ((inputLine = in.readLine()) != null) {
+            response.append(inputLine);
+        }
+        in.close();
+
+        JsonReader reader = Json.createReader(new StringReader(response.toString()));
+        return reader.readObject();
     }
 
 }

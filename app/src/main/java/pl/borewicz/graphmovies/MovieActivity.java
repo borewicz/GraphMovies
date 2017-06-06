@@ -25,11 +25,6 @@ import android.widget.TextView;
 
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.neo4j.driver.v1.Record;
-import org.neo4j.driver.v1.Session;
-import org.neo4j.driver.v1.StatementResult;
-import org.neo4j.driver.v1.types.Node;
-import org.neo4j.driver.v1.StatementResult;
 
 import java.lang.reflect.Array;
 import java.util.ArrayList;
@@ -38,6 +33,10 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+
+import javax.json.JsonArray;
+import javax.json.JsonObject;
+import javax.json.JsonString;
 
 public class MovieActivity extends AppCompatActivity {
 
@@ -130,7 +129,7 @@ public class MovieActivity extends AppCompatActivity {
 
     class LoadMovie extends AsyncTask<String, String, String> {
         String query;
-        StatementResult result;
+        JsonObject json;
         int mMovieId;
 
         LoadMovie(int movieId) {
@@ -143,41 +142,42 @@ public class MovieActivity extends AppCompatActivity {
         }
 
         protected String doInBackground(String... args) {
-            Session session = Neo4jDriver.getInstance().getDriver().session();
+            try {
+                query = String.format(Locale.US, "MATCH (m:Movie) WHERE id(m)=%d return m", mMovieId);
+                json = Neo4jDriver.sendPost(query);
 
-            query = String.format(Locale.US, "MATCH (m:Movie) WHERE id(m)=%d return m", mMovieId);
-            result = session.run(query);
+                JsonObject data = json.getJsonArray("data").getJsonArray(0).getJsonObject(0).getJsonObject("data");
+                    //movieInfo.add(new String[] { "Title", node.get("title").asString()});
+                if (data.containsKey("tagline") || !data.getString("tagline").equals(""))
+                    movieInfo.add(new String[]{"Tagline", data.getString("tagline")});
+                if (data.containsKey("studio"))
+                    movieInfo.add(new String[]{"Studio", data.getString("studio")});
+                movieInfo.add(new String[]{"Description", data.getString("description")});
+                movieInfo.add(new String[]{"Language", data.getString("language")});
+                movieInfo.add(new String[]{"Genre", data.getString("genre")});
 
-            while (result.hasNext()) {
-                Record record = result.next();
+                if (data.containsKey("trailer"))
+                    trailer = data.getString("trailer");
+                if (data.containsKey("imageUrl"))
+                    imageUrl = data.getString("imageUrl");
+                title = data.getString("title");
 
-                //Map<String, Object> mapa = record.asMap();
-                Node node = record.get("m").asNode();
-                //movieInfo.add(new String[] { "Title", node.get("title").asString()});
-                if (!node.get("tagline").asString().isEmpty())
-                    movieInfo.add(new String[]{"Tagline", node.get("tagline").asString()});
-                if (!node.get("studio").asString().isEmpty())
-                    movieInfo.add(new String[]{"Studio", node.get("studio").asString()});
-                movieInfo.add(new String[]{"Description", node.get("description").asString()});
-                movieInfo.add(new String[]{"Language", node.get("language").asString()});
-                movieInfo.add(new String[]{"Genre", node.get("genre").asString()});
+                query = String.format(Locale.US, "MATCH (m)-[r]->(n:Movie) WHERE id(n)=%d return type(r) as rel_type,collect(m.name) as list", mMovieId);
+                json = Neo4jDriver.sendPost(query);
 
-                trailer = node.get("trailer").asString();
-                imageUrl = node.get("imageUrl").asString();
-                title = node.get("title").asString();
+                for (JsonArray arr : json.getJsonArray("data").getValuesAs(JsonArray.class))
+                {
+                    String rel_type = arr.getString(0);
+                    ArrayList<String> list = new ArrayList<String>();
+                    for (JsonString op : arr.getJsonArray(1).getValuesAs(JsonString.class))
+                        list.add(op.getString());
+                    movieInfo.add(new String[]{relationsMapping.get(rel_type),
+                            TextUtils.join(", ", list)});
+                }
             }
-
-            query = String.format(Locale.US, "MATCH (m)-[r]->(n:Movie) WHERE id(n)=%d return type(r) as rel_type,collect(m.name) as list", mMovieId);
-            result = session.run(query);
-
-            while (result.hasNext()) {
-                Record record = result.next();
-                movieInfo.add(new String[]{relationsMapping.get(record.get("rel_type").asString()),
-                        TextUtils.join(", ", record.get("list").asList())});
+            catch (Exception e) {
+                e.printStackTrace();
             }
-
-
-            session.close();
             return null;
         }
 

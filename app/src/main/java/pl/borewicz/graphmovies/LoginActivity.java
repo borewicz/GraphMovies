@@ -243,14 +243,7 @@ public class LoginActivity extends AppCompatActivity implements LoaderCallbacks<
 
         @Override
         protected Boolean doInBackground(Void... params) {
-            try {
-                Neo4jDriver.getInstance().InitializeConnection(mUri, mEmail, mPassword);
-            }
-            catch (Exception e)
-            {
-                return false;
-            }
-            return true;
+            return Neo4jDriver.InitializeConnection(mUri, mEmail, mPassword);
         }
 
         @Override

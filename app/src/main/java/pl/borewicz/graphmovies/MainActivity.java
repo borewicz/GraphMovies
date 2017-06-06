@@ -22,7 +22,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-import org.neo4j.driver.v1.*;
+import javax.json.JsonArray;
+import javax.json.JsonObject;
 
 class MovieItem {
     private String name;
@@ -171,22 +172,26 @@ public class MainActivity extends AppCompatActivity {
         }
 
         protected String doInBackground(String... args) {
-            Session session = Neo4jDriver.getInstance().getDriver().session();
-
             //createQuery(mLimit, mSkip)
-            StatementResult result = session.run(mQuery);
+            try {
+                JsonObject json = Neo4jDriver.sendPost(mQuery);
 
-            while (result.hasNext()) {
-                Record record = result.next();
-                System.out.println(record.get("title") + " " + record.get("name").asString());
-                MovieItem item = new MovieItem();
-                item.setName(record.get("m.title").asString());
-                item.setGenre(record.get("m.genre").asString());
-                item.setId(record.get("movie_id").asInt());
-                moviesList.add(item);
+                for (JsonArray record : json.getJsonArray("data").getValuesAs(JsonArray.class)) {
+                    MovieItem item = new MovieItem();
+                    item.setName(record.getString(0));
+                    try {
+                        item.setGenre(record.getString(1));
+                    }
+                    catch (ClassCastException e) {
+                        item.setGenre("Unknown");
+                    }
+                    item.setId(record.getInt(2));
+                    moviesList.add(item);
+                }
             }
-
-            session.close();
+            catch (Exception e) {
+                e.printStackTrace();
+            }
             return null;
         }
 

@@ -94,7 +94,7 @@ public class MainActivity extends AppCompatActivity {
                 if (firstVisibleItem + visibleItemCount == totalItemCount && totalItemCount != 0) {
                     if (flag_loading == false && searchMode == false) {
                         flag_loading = true;
-                        new LoadMovies(createQuery(moviesList.size(), 10)).execute();
+                        new LoadMovies(createQuery(moviesList.size()+1, 10)).execute();
                     }
                 }
             }

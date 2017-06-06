@@ -1,7 +1,10 @@
 package pl.borewicz.graphmovies;
 
+import android.content.Intent;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.support.design.widget.CollapsingToolbarLayout;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
 import android.support.v7.app.AppCompatActivity;
@@ -9,6 +12,8 @@ import android.support.v7.widget.DefaultItemAnimator;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.Toolbar;
+import android.text.TextUtils;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -42,6 +47,8 @@ public class MovieActivity extends AppCompatActivity {
     ArrayAdapter<String[]> adapter;
     RecyclerView recyclerView;
     Toolbar toolbar;
+    CollapsingToolbarLayout collapsingToolbarLayout;
+    Map<String, String> relationsMapping = new HashMap<String, String>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,19 +59,30 @@ public class MovieActivity extends AppCompatActivity {
         toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
+        collapsingToolbarLayout = (CollapsingToolbarLayout) findViewById(R.id.toolbar_layout);
+        //collapsingToolbarLayout.setTitleEnabled(false);
+
         recyclerView = (RecyclerView) findViewById(R.id.att_list);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         recyclerView.setItemAnimator(new DefaultItemAnimator());
 
-        String query = String.format(Locale.US, "MATCH (m:Movie) WHERE id(m)=%d return m", getIntent().getIntExtra("movie_id", 0));
-        new LoadMovie(query).execute();
+        relationsMapping.put("DIRECTED", "Directed by");
+        relationsMapping.put("ACTS_IN", "Cast");
+
+        new LoadMovie(getIntent().getIntExtra("movie_id", 0)).execute();
 
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-                        .setAction("Action", null).show();
+                if (!trailer.isEmpty()) {
+                    Intent i = new Intent(Intent.ACTION_VIEW);
+                    i.setData(Uri.parse(trailer));
+                    startActivity(i);
+                }
+                else
+                    Snackbar.make(view, "Trailer not available", Snackbar.LENGTH_LONG)
+                            .setAction("Action", null).show();
             }
         });
     }
@@ -111,10 +129,12 @@ public class MovieActivity extends AppCompatActivity {
     }
 
     class LoadMovie extends AsyncTask<String, String, String> {
-        String mQuery;
+        String query;
+        StatementResult result;
+        int mMovieId;
 
-        LoadMovie(String query) {
-            mQuery = query;
+        LoadMovie(int movieId) {
+            mMovieId = movieId;
         }
 
         @Override
@@ -125,7 +145,8 @@ public class MovieActivity extends AppCompatActivity {
         protected String doInBackground(String... args) {
             Session session = Neo4jDriver.getInstance().getDriver().session();
 
-            StatementResult result = session.run(mQuery);
+            query = String.format(Locale.US, "MATCH (m:Movie) WHERE id(m)=%d return m", mMovieId);
+            result = session.run(query);
 
             while (result.hasNext()) {
                 Record record = result.next();
@@ -146,6 +167,16 @@ public class MovieActivity extends AppCompatActivity {
                 title = node.get("title").asString();
             }
 
+            query = String.format(Locale.US, "MATCH (m)-[r]->(n:Movie) WHERE id(n)=%d return type(r) as rel_type,collect(m.name) as list", mMovieId);
+            result = session.run(query);
+
+            while (result.hasNext()) {
+                Record record = result.next();
+                movieInfo.add(new String[]{relationsMapping.get(record.get("rel_type").asString()),
+                        TextUtils.join(", ", record.get("list").asList())});
+            }
+
+
             session.close();
             return null;
         }
@@ -155,7 +186,8 @@ public class MovieActivity extends AppCompatActivity {
             runOnUiThread(new Runnable() {
                 public void run() {
                     recyclerView.setAdapter(new MovieAdapter(movieInfo, recyclerView));
-                    toolbar.setTitle(title);
+                    //collapsingToolbarLayout.setTitleEnabled(false);
+                    collapsingToolbarLayout.setTitle(title);
                 }
             });
         }
